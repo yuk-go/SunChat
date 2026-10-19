@@ -61,6 +61,7 @@ public partial class MainWindow : Window
         {
             try
             {
+                RestoreKnownHosts();
                 _net.Start();
                 _expiry.Start();
                 SetStatus($"대기 중 — TCP 포트 {_net.TcpPort}, 발견 포트 {Protocol.DiscoveryPort}");
@@ -148,9 +149,11 @@ public partial class MainWindow : Window
         else
         {
             bool resort = p.Group != group || !p.Online;
+            bool infoChanged = p.Name != name || p.Group != group || p.TcpPort != port;
             p.Name = name; p.Group = group; p.Address = addr; p.TcpPort = port; p.LastSeen = DateTime.UtcNow;
             p.Online = true;
             if (resort) _peerView.Refresh(); // re-bucket / move back up to active
+            if (p.Manual && infoChanged) SaveKnownHosts(); // keep remembered info fresh
         }
     });
 
@@ -198,6 +201,44 @@ public partial class MainWindow : Window
     {
         var p = _peers.FirstOrDefault(x => x.Id == id);
         if (p != null) PeerList.SelectedItem = p;
+    }
+
+    // Flag the peer reachable at this port as manual, then persist the known-host list.
+    private void MarkManualAndRemember(int port)
+    {
+        var p = _peers.FirstOrDefault(x => x.TcpPort == port);
+        if (p != null) p.Manual = true;
+        SaveKnownHosts();
+    }
+
+    private void SaveKnownHosts()
+    {
+        _settings.KnownHosts = _peers.Where(p => p.Manual).Select(p => new KnownHost
+        {
+            Id = p.Id.ToString(),
+            Name = p.Name,
+            Group = p.Group,
+            Host = p.Address.ToString(),
+            Port = p.TcpPort,
+        }).ToList();
+        _settings.Save();
+    }
+
+    // Re-add remembered manual peers at startup (grey/offline until a probe confirms).
+    private void RestoreKnownHosts()
+    {
+        foreach (var h in _settings.KnownHosts)
+        {
+            if (!Guid.TryParse(h.Id, out var id)) continue;
+            if (_peers.Any(p => p.Id == id)) continue;
+            if (!IPAddress.TryParse(h.Host, out var addr)) continue;
+            _peers.Add(new Peer
+            {
+                Id = id, Name = h.Name, Group = h.Group,
+                Address = addr, TcpPort = h.Port,
+                Manual = true, Online = false, LastSeen = DateTime.MinValue,
+            });
+        }
     }
 
     // ---- UI handlers ----
@@ -265,6 +306,7 @@ public partial class MainWindow : Window
         try
         {
             await _net.ConnectManualAsync(dlg.Host, dlg.Port);
+            MarkManualAndRemember(dlg.Port);
             SetStatus($"연결됨: {dlg.Host}:{dlg.Port}");
         }
         catch (Exception ex) { SetStatus($"연결 실패: {ex.Message}"); }

@@ -11,6 +11,7 @@ public class Peer : INotifyPropertyChanged
     public IPAddress Address { get; set; }
     public int TcpPort { get; set; }
     public DateTime LastSeen { get; set; }
+    public bool Manual { get; set; }   // added via "IP로 연결" -> remembered across restarts
 
     private string _name;
     public string Name

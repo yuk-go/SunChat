@@ -5,6 +5,16 @@ using Microsoft.Win32;
 
 namespace SunChat;
 
+// A manually-connected peer worth remembering across restarts.
+public class KnownHost
+{
+    public string Id { get; set; }    // peer Guid (as string), if we learned it
+    public string Name { get; set; }
+    public string Group { get; set; }
+    public string Host { get; set; }  // IP or hostname used to connect
+    public int Port { get; set; }
+}
+
 // User settings, persisted as JSON under %AppData%\SunChat\settings.json.
 public class Settings
 {
@@ -15,6 +25,10 @@ public class Settings
     public bool AutoStart { get; set; }
     public int TcpPort { get; set; } = 51001;   // fixed so other subnets can reach us by IP:port
     public int RetentionDays { get; set; } = 90; // chat history kept this many days (1..180)
+
+    // Manually-connected peers, remembered across restarts so they reappear
+    // (grey until a refresh confirms they are online).
+    public List<KnownHost> KnownHosts { get; set; } = new();
 
     public const int MaxRetentionDays = 180;
 
@@ -44,6 +58,7 @@ public class Settings
         if (string.IsNullOrWhiteSpace(s.DownloadDir)) s.DownloadDir = DefaultDownloadDir;
         if (s.TcpPort is < 1 or > 65535) s.TcpPort = 51001;
         s.RetentionDays = Math.Clamp(s.RetentionDays, 1, MaxRetentionDays);
+        s.KnownHosts ??= new();
         return s;
     }
 
